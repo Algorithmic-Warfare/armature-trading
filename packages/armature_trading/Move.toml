@@ -1,0 +1,33 @@
+[package]
+name = "armature_trading"
+edition = "2024"
+version = "0.0.1"
+
+# armature_trading wires the DAO TreasuryVault to the TriexBook DEX so that
+# deposit / order / sweep operations execute through the unified
+# ExecutionTicket<P> proposal pipeline. Standalone, optional package: consumers
+# who do not need DEX integration never pull triexbook.
+#
+# Target environment: testnet_stillness ONLY.
+#   On testnet_stillness, armature_framework, triexbook, and multicoin all
+#   resolve to the SAME multicoin build (rev c7a97f2, matching manifest digests),
+#   so TreasuryVault's MultiCoinBalance and triexbook's are the identical type.
+#   Do NOT add testnet_utopia: triexbook pins a different multicoin there
+#   (281bd7d), which would diverge the MultiCoinBalance type and break the
+#   treasury <-> balance_manager handoff.
+
+[dependencies]
+armature  = { git = "https://github.com/loash-industries/armature.git",    subdir = "packages/armature_framework", rev = "main" }
+triexbook = { git = "https://github.com/loash-industries/triex-book.git",   subdir = "packages/triexbook",          rev = "7630922672b50a1596d354c93e20208191520c22" }
+multicoin = { git = "https://github.com/Algorithmic-Warfare/multicoin.git", subdir = "packages/multicoin",          rev = "c7a97f2f42ffbddbe2d44686cbc9eebd1810b8d6" }
+
+[addresses]
+armature_trading = "0x0"
+
+# Published address on testnet_stillness. 0x0 until first publish; replace with
+# the real package id after `sui client publish -e testnet_stillness`.
+[environments]
+testnet_stillness = "0x0"
+
+[env.testnet_stillness]
+armature_trading = "0x0"
