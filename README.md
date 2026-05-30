@@ -47,8 +47,30 @@ there (`281bd7d`), which would make the two `MultiCoinBalance` types incompatibl
 governance) — a bot or the DAO pushes settled fills into the BalanceManager
 before sweeping.
 
+## Build status
+
+The package **source compiles cleanly** on `testnet_stillness` (`sui move build`
+→ `BUILDING armature_trading`, exit 0), verified against the real
+triexbook / multicoin / framework APIs. The treasury ⇄ BalanceManager multicoin
+handoff type-checks — confirming `MultiCoinBalance` is the identical type on
+both sides. Two things had to be true for the build to pass:
+
+- **`multicoin` needs `override = true`** (now in `Move.toml`): both this package
+  and `armature` pull multicoin at the same rev `c7a97f2` → same package id; Move
+  requires the explicit override to unify them. (This also re-confirms type identity.)
+- **`armature_framework` must declare `testnet_stillness`** — see blocker #0 below.
+  The clean build was reproduced against a locally-patched framework copy that adds
+  that env; with the unpatched `main` framework the build stops at dependency
+  resolution, not at any error in this package's code.
+
 ## ⚠️ Open items before this is merge-ready
 
+0. **`armature_framework` env gap (release blocker).** The framework on `main`
+   declares only `testnet_wip`; triexbook and multicoin declare `testnet_stillness`.
+   Move requires every transitive dep to declare the build env, so
+   `sui move build -e testnet_stillness` cannot resolve `armature` until the
+   framework adds `testnet_stillness` to its `[environments]`. Fix is upstream in
+   `loash-industries/armature`.
 1. **Cap ⇄ BalanceManager assertion (blocker).** TriexBook exposes no public
    getter for a cap's bound `balance_manager_id`, and its `validate_*` fns are
    private. TriexBook still enforces the binding *internally* on every op, so it
