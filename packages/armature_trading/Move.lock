@@ -4,6 +4,48 @@
 [move]
 version = 4
 
+[pinned.testnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "b979a730b73afb8e5f9a9672fa7b09afbff6479b" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b979a730b73afb8e5f9a9672fa7b09afbff6479b" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.testnet.armature]
+source = { git = "https://github.com/loash-industries/armature.git", subdir = "packages/armature_framework", rev = "1274ac43a6f140e0846ea9735b6c502620312c22" }
+use_environment = "testnet"
+manifest_digest = "79668884BD842AAEF258B09E94BE1A1FCEF696A607FFB5226BBD1BD323FA8DC3"
+deps = { multicoin = "multicoin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.armature_trading]
+source = { root = true }
+use_environment = "testnet"
+manifest_digest = "6371AC46E76792690B511B2E290DDD4EDE8E4CFDB212071DA900060B285F074A"
+deps = { armature = "armature", multicoin = "multicoin", std = "MoveStdlib", sui = "Sui", triexbook = "triexbook" }
+
+[pinned.testnet.multicoin]
+source = { git = "https://github.com/Algorithmic-Warfare/multicoin", subdir = "packages/multicoin", rev = "c7a97f2f42ffbddbe2d44686cbc9eebd1810b8d6" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.token]
+source = { local = "../../../../triex-book/triex-book/packages/token" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.triexbook]
+source = { local = "../../../../triex-book/triex-book/packages/triexbook" }
+use_environment = "testnet"
+manifest_digest = "C6D1F9D2B7262A1729F762D61FC2845A375B1D0FD414FFE33098381DB576B1B6"
+deps = { multicoin = "multicoin", std = "MoveStdlib", sui = "Sui", token = "token" }
+
 [pinned.testnet_stillness.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "367fd808279bed26f7c64fc63160062a2ee29ab7" }
 use_environment = "testnet_stillness"
