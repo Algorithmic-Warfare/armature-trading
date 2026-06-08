@@ -712,6 +712,155 @@ module armature_trading::trading_ops_tests {
         ts::end(test);
     }
 
+    // ============================================================
+    // Negative tests — wrong-object assertions
+    // ============================================================
+
+    #[test]
+    #[expected_failure(abort_code = 2, location = armature_trading::trading_ops)]
+    fun test_wrong_collection_aborts() {
+        let mut test = ts::begin(ADMIN);
+        let dao_id = setup_dao(&mut test);
+        let (registry_id, admin_cap) = setup_registry(&mut test);
+        // Two distinct collections: payload names A, executor receives B.
+        let (collection_id_a, collection_cap_a) = setup_collection(&mut test);
+        let (collection_id_b, collection_cap_b) = setup_collection(&mut test);
+
+        test.next_tx(ADMIN);
+        {
+            let mut registry = test.take_shared_by_id<Registry>(registry_id);
+            registry.add_approved_quote_unchecked<QUOTE>(&admin_cap);
+            ts::return_shared(registry);
+        };
+
+        test.next_tx(ADMIN);
+        {
+            let mut registry = test.take_shared_by_id<Registry>(registry_id);
+            let collection_b = test.take_shared_by_id<Collection>(collection_id_b);
+            let mut treasury = test.take_shared<TreasuryVault>();
+            let ticket = make_ticket(dao_id, create_multicoin_pool::new<QUOTE>(collection_id_a, ASSET_ID));
+            trading_ops::execute_create_multicoin_pool<QUOTE>(
+                &mut registry,
+                &collection_b,
+                &mut treasury,
+                ticket,
+                test.ctx(),
+            );
+            // Unreachable — satisfy the compiler's resource analysis.
+            ts::return_shared(treasury);
+            ts::return_shared(collection_b);
+            ts::return_shared(registry);
+        };
+
+        unit_test::destroy(admin_cap);
+        unit_test::destroy(collection_cap_a);
+        unit_test::destroy(collection_cap_b);
+        ts::end(test);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 3, location = armature_trading::trading_ops)]
+    fun test_wrong_pool_aborts_place_limit_order_coin() {
+        let mut test = ts::begin(ADMIN);
+        let dao_id = setup_dao(&mut test);
+        let (registry_id, admin_cap) = setup_registry(&mut test);
+        let pool_id = create_coin_pool(registry_id, &admin_cap, &mut test);
+
+        test.next_tx(ADMIN);
+        let bm_id = {
+            let mut cap_vault = test.take_shared<CapabilityVault>();
+            let bm_id = seed_trading_caps(&mut cap_vault, &mut test);
+            ts::return_shared(cap_vault);
+            bm_id
+        };
+
+        // Payload carries the correct bm_id but a wrong pool_id → EWrongPool.
+        test.next_tx(ADMIN);
+        {
+            let mut pool = test.take_shared_by_id<Pool<BASE, QUOTE>>(pool_id);
+            let mut bm = test.take_shared_by_id<BalanceManager>(bm_id);
+            let cap_vault = test.take_shared<CapabilityVault>();
+            let clock = clock::create_for_testing(test.ctx());
+            let wrong_pool_id = object::id_from_address(@0xBAD);
+            let ticket = make_ticket(
+                dao_id,
+                place_limit_order_coin::new<BASE, QUOTE>(
+                    bm_id,
+                    wrong_pool_id,
+                    constants::float_scaling(),
+                    constants::float_scaling(),
+                    true,
+                    0,
+                    0,
+                    LARGE_EXPIRE,
+                ),
+            );
+            trading_ops::execute_place_limit_order_coin<BASE, QUOTE>(
+                &mut pool,
+                &mut bm,
+                &cap_vault,
+                &clock,
+                ticket,
+                test.ctx(),
+            );
+            // Unreachable — satisfy the compiler's resource analysis.
+            clock.destroy_for_testing();
+            ts::return_shared(cap_vault);
+            ts::return_shared(bm);
+            ts::return_shared(pool);
+        };
+
+        unit_test::destroy(admin_cap);
+        ts::end(test);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 3, location = armature_trading::trading_ops)]
+    fun test_wrong_pool_aborts_cancel_order_coin() {
+        let mut test = ts::begin(ADMIN);
+        let dao_id = setup_dao(&mut test);
+        let (registry_id, admin_cap) = setup_registry(&mut test);
+        let pool_id = create_coin_pool(registry_id, &admin_cap, &mut test);
+
+        test.next_tx(ADMIN);
+        let bm_id = {
+            let mut cap_vault = test.take_shared<CapabilityVault>();
+            let bm_id = seed_trading_caps(&mut cap_vault, &mut test);
+            ts::return_shared(cap_vault);
+            bm_id
+        };
+
+        // Payload carries the correct bm_id but a wrong pool_id → EWrongPool.
+        test.next_tx(ADMIN);
+        {
+            let mut pool = test.take_shared_by_id<Pool<BASE, QUOTE>>(pool_id);
+            let mut bm = test.take_shared_by_id<BalanceManager>(bm_id);
+            let cap_vault = test.take_shared<CapabilityVault>();
+            let clock = clock::create_for_testing(test.ctx());
+            let wrong_pool_id = object::id_from_address(@0xBAD);
+            let ticket = make_ticket(
+                dao_id,
+                cancel_order_coin::new<BASE, QUOTE>(bm_id, wrong_pool_id, 0),
+            );
+            trading_ops::execute_cancel_order_coin<BASE, QUOTE>(
+                &mut pool,
+                &mut bm,
+                &cap_vault,
+                &clock,
+                ticket,
+                test.ctx(),
+            );
+            // Unreachable — satisfy the compiler's resource analysis.
+            clock.destroy_for_testing();
+            ts::return_shared(cap_vault);
+            ts::return_shared(bm);
+            ts::return_shared(pool);
+        };
+
+        unit_test::destroy(admin_cap);
+        ts::end(test);
+    }
+
     #[test]
     fun test_create_multicoin_pool() {
         let mut test = ts::begin(ADMIN);
