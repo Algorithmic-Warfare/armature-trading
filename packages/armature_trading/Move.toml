@@ -24,10 +24,10 @@ version = "0.0.1"
 # that override lands (verified locally against a patched framework copy).
 [dependencies]
 armature  = { git = "https://github.com/loash-industries/armature.git",    subdir = "packages/armature_framework", rev = "main" }
-triexbook = { local = "../../../../triex-book/triex-book/packages/triexbook" }
+triexbook = { git = "https://github.com/loash-industries/triex-book.git",   subdir = "packages/triexbook",          rev = "7630922672b50a1596d354c93e20208191520c22" }
 # token is a transitive dep of triexbook (the CRED coin). Declared here explicitly
 # so tests can import token::cred::CRED to mint pool-creation fee coins.
-token    = { local = "../../../../triex-book/triex-book/packages/token" }
+token = { git = "https://github.com/loash-industries/triex-book.git",   subdir = "packages/token",          rev = "7630922672b50a1596d354c93e20208191520c22" }
 # override = true: armature_trading, armature, and triexbook all depend on multicoin at
 # the SAME rev (c7a97f2) -> same on-chain package id. Move requires an explicit override
 # to confirm the versions are intentionally unified (they are).
