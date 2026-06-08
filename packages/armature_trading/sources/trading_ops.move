@@ -35,11 +35,16 @@ module armature_trading::trading_ops;
 use armature::capability_vault::CapabilityVault;
 use armature::proposal::ExecutionTicket;
 use armature::treasury_vault::TreasuryVault;
+use multicoin::multicoin::Collection;
 use sui::clock::Clock;
+use token::cred::CRED;
 use triexbook::balance_manager::{Self, BalanceManager, DepositCap, WithdrawCap, TradeCap};
-use triexbook::multicoin_pool::MultiCoinPool;
+use triexbook::constants;
+use triexbook::multicoin_pool::{Self, MultiCoinPool};
 use triexbook::pool::Pool;
+use triexbook::registry::Registry;
 
+use armature_trading::create_multicoin_pool::CreateMulticoinPool;
 use armature_trading::setup_trading_account::SetupTradingAccount;
 use armature_trading::deposit_coin_to_book::DepositCoinToBook;
 use armature_trading::deposit_multicoin_to_book::DepositMulticoinToBook;
@@ -52,6 +57,8 @@ use armature_trading::sweep_multicoin_to_treasury::SweepMulticoinToTreasury;
 
 const EAlreadySetUp: u64 = 0;
 const EWrongBalanceManager: u64 = 1;
+const EWrongCollection: u64 = 2;
+const EWrongPool: u64 = 3;
 
 // === setup ===
 
@@ -131,6 +138,35 @@ public fun execute_deposit_multicoin_to_book(
     ticket.discharge();
 }
 
+// === pool creation ===
+
+/// Create a permissionless MultiCoinPool<QuoteAsset> for the given collection/asset,
+/// paying the creation fee from the DAO treasury. The pool is shared inside
+/// `create_permissionless_pool`; the returned pool ID is dropped (it's on-chain via events).
+public fun execute_create_multicoin_pool<QuoteAsset>(
+    registry: &mut Registry,
+    collection: &Collection,
+    treasury: &mut TreasuryVault,
+    ticket: ExecutionTicket<CreateMulticoinPool<QuoteAsset>>,
+    ctx: &mut TxContext,
+) {
+    let payload = ticket.ticket_payload();
+    let req = ticket.ticket_request();
+
+    assert!(object::id(collection) == payload.collection_id(), EWrongCollection);
+
+    let fee = treasury.withdraw<CRED, _>(constants::pool_creation_fee(), req, ctx);
+    let _pool_id = multicoin_pool::create_permissionless_pool<QuoteAsset>(
+        registry,
+        collection,
+        payload.asset_id(),
+        fee,
+        ctx,
+    );
+
+    ticket.discharge();
+}
+
 // === trading ===
 
 public fun execute_place_limit_order<QuoteAsset>(
@@ -147,6 +183,7 @@ public fun execute_place_limit_order<QuoteAsset>(
     // See OPEN ITEM (1): assert the caller passed the BM the proposal voted on.
     // triexbook's generate_proof_as_trader internally validates cap<->BM.
     assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+    assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
     let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
     let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
@@ -181,6 +218,7 @@ public fun execute_cancel_order<QuoteAsset>(
     let req = ticket.ticket_request();
 
     assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+    assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
     let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
     let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
@@ -255,6 +293,7 @@ public fun execute_place_limit_order_coin<BaseAsset, QuoteAsset>(
     let req = ticket.ticket_request();
 
     assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+    assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
     let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
     let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
@@ -288,6 +327,7 @@ public fun execute_cancel_order_coin<BaseAsset, QuoteAsset>(
     let req = ticket.ticket_request();
 
     assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+    assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
     let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
     let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
