@@ -30,210 +30,319 @@
 ///     exists, enforcing one trading account per vault so `ids_for_type[0]` is
 ///     unambiguous. Relax later if multi-BM support is wanted.
 /// ====================================================================
-module armature_trading::trading_ops;
+module armature_trading::trading_ops {
+    use armature::{
+        capability_vault::CapabilityVault,
+        proposal::ExecutionTicket,
+        treasury_vault::TreasuryVault
+    };
+    use armature_trading::{
+        cancel_order::CancelOrder,
+        cancel_order_coin::CancelOrderCoin,
+        create_multicoin_pool::CreateMulticoinPool,
+        deposit_coin_to_book::DepositCoinToBook,
+        deposit_multicoin_to_book::DepositMulticoinToBook,
+        place_limit_order::PlaceLimitOrder,
+        place_limit_order_coin::PlaceLimitOrderCoin,
+        setup_trading_account::SetupTradingAccount,
+        sweep_coin_to_treasury::SweepCoinToTreasury,
+        sweep_multicoin_to_treasury::SweepMulticoinToTreasury
+    };
+    use multicoin::multicoin::Collection;
+    use sui::clock::Clock;
+    use token::cred::CRED;
+    use triexbook::{
+        balance_manager::{Self, BalanceManager, DepositCap, WithdrawCap, TradeCap},
+        constants,
+        multicoin_pool::{Self, MultiCoinPool},
+        pool::Pool,
+        registry::Registry
+    };
 
-use armature::capability_vault::CapabilityVault;
-use armature::proposal::ExecutionTicket;
-use armature::treasury_vault::TreasuryVault;
-use sui::clock::Clock;
-use triexbook::balance_manager::{Self, BalanceManager, DepositCap, WithdrawCap, TradeCap};
-use triexbook::multicoin_pool::MultiCoinPool;
+    const EAlreadySetUp: u64 = 0;
+    const EWrongBalanceManager: u64 = 1;
+    const EWrongCollection: u64 = 2;
+    const EWrongPool: u64 = 3;
 
-use armature_trading::setup_trading_account::SetupTradingAccount;
-use armature_trading::deposit_coin_to_book::DepositCoinToBook;
-use armature_trading::deposit_multicoin_to_book::DepositMulticoinToBook;
-use armature_trading::place_limit_order::PlaceLimitOrder;
-use armature_trading::cancel_order::CancelOrder;
-use armature_trading::sweep_coin_to_treasury::SweepCoinToTreasury;
-use armature_trading::sweep_multicoin_to_treasury::SweepMulticoinToTreasury;
+    // === setup ===
 
-const EAlreadySetUp: u64 = 0;
-const EWrongBalanceManager: u64 = 1;
+    /// Create the DAO's BalanceManager and stash its three caps in the vault.
+    /// The DAO is identified by the ExecutionRequest carried in the ticket; the
+    /// new BalanceManager is owned by the DAO id (req.req_dao_id() -> address).
+    public fun execute_setup_trading_account(
+        cap_vault: &mut CapabilityVault,
+        ticket: ExecutionTicket<SetupTradingAccount>,
+        ctx: &mut TxContext,
+    ) {
+        let req = ticket.ticket_request();
 
-// === setup ===
+        // Enforce single trading account so `ids_for_type<_>()[0]` is unambiguous.
+        assert!(cap_vault.ids_for_type<DepositCap>().is_empty(), EAlreadySetUp);
 
-/// Create the DAO's BalanceManager and stash its three caps in the vault.
-/// The DAO is identified by the ExecutionRequest carried in the ticket; the
-/// new BalanceManager is owned by the DAO id (req.req_dao_id() -> address).
-public fun execute_setup_trading_account(
-    cap_vault: &mut CapabilityVault,
-    ticket: ExecutionTicket<SetupTradingAccount>,
-    ctx: &mut TxContext,
-) {
-    let req = ticket.ticket_request();
+        // TODO(owner): confirm how the DAO's on-chain address is derived. The vault
+        // is keyed by dao_id (an ID). triexbook wants an `owner: address`. Either
+        // the DAO has a canonical address accessor, or the BM is owned by the
+        // package / a derived address. Using req DAO id -> address as a placeholder.
+        let dao_owner: address = req.req_dao_id().to_address();
 
-    // Enforce single trading account so `ids_for_type<_>()[0]` is unambiguous.
-    assert!(cap_vault.ids_for_type<DepositCap>().is_empty(), EAlreadySetUp);
+        let (
+            balance_manager,
+            deposit_cap,
+            withdraw_cap,
+            trade_cap,
+        ) = balance_manager::new_with_custom_owner_and_caps(dao_owner, ctx);
 
-    // TODO(owner): confirm how the DAO's on-chain address is derived. The vault
-    // is keyed by dao_id (an ID). triexbook wants an `owner: address`. Either
-    // the DAO has a canonical address accessor, or the BM is owned by the
-    // package / a derived address. Using req DAO id -> address as a placeholder.
-    let dao_owner: address = req.req_dao_id().to_address();
+        cap_vault.store_cap<DepositCap, _>(deposit_cap, req);
+        cap_vault.store_cap<WithdrawCap, _>(withdraw_cap, req);
+        cap_vault.store_cap<TradeCap, _>(trade_cap, req);
 
-    let (balance_manager, deposit_cap, withdraw_cap, trade_cap) =
-        balance_manager::new_with_custom_owner_and_caps(dao_owner, ctx);
+        transfer::public_share_object(balance_manager);
+        ticket.discharge();
+    }
 
-    cap_vault.store_cap<DepositCap, _>(deposit_cap, req);
-    cap_vault.store_cap<WithdrawCap, _>(withdraw_cap, req);
-    cap_vault.store_cap<TradeCap, _>(trade_cap, req);
+    // === deposits (treasury -> book) ===
 
-    transfer::public_share_object(balance_manager);
-    ticket.discharge();
-}
+    public fun execute_deposit_coin_to_book<T>(
+        treasury: &mut TreasuryVault,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        ticket: ExecutionTicket<DepositCoinToBook<T>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-// === deposits (treasury -> book) ===
+        let deposit_cap_id = cap_vault.ids_for_type<DepositCap>()[0];
+        let deposit_cap = cap_vault.borrow_cap<DepositCap, _>(deposit_cap_id, req);
 
-public fun execute_deposit_coin_to_book<T>(
-    treasury: &mut TreasuryVault,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    ticket: ExecutionTicket<DepositCoinToBook<T>>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let coin = treasury.withdraw<T, _>(payload.amount(), req, ctx);
+        balance_manager.deposit_with_cap(deposit_cap, coin, ctx);
 
-    let deposit_cap_id = cap_vault.ids_for_type<DepositCap>()[0];
-    let deposit_cap = cap_vault.borrow_cap<DepositCap, _>(deposit_cap_id, req);
+        ticket.discharge();
+    }
 
-    let coin = treasury.withdraw<T, _>(payload.amount(), req, ctx);
-    balance_manager.deposit_with_cap(deposit_cap, coin, ctx);
+    public fun execute_deposit_multicoin_to_book(
+        treasury: &mut TreasuryVault,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        ticket: ExecutionTicket<DepositMulticoinToBook>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-    ticket.discharge();
-}
+        let deposit_cap_id = cap_vault.ids_for_type<DepositCap>()[0];
+        let deposit_cap = cap_vault.borrow_cap<DepositCap, _>(deposit_cap_id, req);
 
-public fun execute_deposit_multicoin_to_book(
-    treasury: &mut TreasuryVault,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    ticket: ExecutionTicket<DepositMulticoinToBook>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let bal = treasury.withdraw_multicoin<_>(
+            payload.collection_id(),
+            payload.asset_id(),
+            payload.amount(),
+            req,
+            ctx,
+        );
+        balance_manager.deposit_multicoin_with_cap(deposit_cap, bal, ctx);
 
-    let deposit_cap_id = cap_vault.ids_for_type<DepositCap>()[0];
-    let deposit_cap = cap_vault.borrow_cap<DepositCap, _>(deposit_cap_id, req);
+        ticket.discharge();
+    }
 
-    let bal = treasury.withdraw_multicoin<_>(
-        payload.collection_id(),
-        payload.asset_id(),
-        payload.amount(),
-        req,
-        ctx,
-    );
-    balance_manager.deposit_multicoin_with_cap(deposit_cap, bal, ctx);
+    // === pool creation ===
 
-    ticket.discharge();
-}
+    /// Create a permissionless MultiCoinPool<QuoteAsset> for the given collection/asset,
+    /// paying the creation fee from the DAO treasury. The pool is shared inside
+    /// `create_permissionless_pool`; the returned pool ID is dropped (it's on-chain via events).
+    public fun execute_create_multicoin_pool<QuoteAsset>(
+        registry: &mut Registry,
+        collection: &Collection,
+        treasury: &mut TreasuryVault,
+        ticket: ExecutionTicket<CreateMulticoinPool<QuoteAsset>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-// === trading ===
+        assert!(object::id(collection) == payload.collection_id(), EWrongCollection);
 
-public fun execute_place_limit_order<QuoteAsset>(
-    pool: &mut MultiCoinPool<QuoteAsset>,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    clock: &Clock,
-    ticket: ExecutionTicket<PlaceLimitOrder<QuoteAsset>>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let fee = treasury.withdraw<CRED, _>(constants::pool_creation_fee(), req, ctx);
+        let _pool_id = multicoin_pool::create_permissionless_pool<QuoteAsset>(
+            registry,
+            collection,
+            payload.asset_id(),
+            fee,
+            ctx,
+        );
 
-    // See OPEN ITEM (1): assert the caller passed the BM the proposal voted on.
-    // triexbook's generate_proof_as_trader internally validates cap<->BM.
-    assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        ticket.discharge();
+    }
 
-    let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
-    let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
+    // === trading ===
 
-    let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
-    // place_limit_order returns OrderInfo; bind and drop it (or surface it later).
-    let _order_info = pool.place_limit_order(
-        balance_manager,
-        &proof,
-        payload.order_type(),
-        payload.self_matching_option(),
-        payload.price(),
-        payload.quantity(),
-        payload.is_bid(),
-        payload.expire_timestamp(),
-        clock,
-        ctx,
-    );
+    public fun execute_place_limit_order<QuoteAsset>(
+        pool: &mut MultiCoinPool<QuoteAsset>,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        clock: &Clock,
+        ticket: ExecutionTicket<PlaceLimitOrder<QuoteAsset>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-    ticket.discharge();
-}
+        // See OPEN ITEM (1): assert the caller passed the BM the proposal voted on.
+        // triexbook's generate_proof_as_trader internally validates cap<->BM.
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
-public fun execute_cancel_order<QuoteAsset>(
-    pool: &mut MultiCoinPool<QuoteAsset>,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    clock: &Clock,
-    ticket: ExecutionTicket<CancelOrder<QuoteAsset>>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
+        let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
 
-    assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
+        // place_limit_order returns OrderInfo; bind and drop it (or surface it later).
+        let _order_info = pool.place_limit_order(
+            balance_manager,
+            &proof,
+            payload.order_type(),
+            payload.self_matching_option(),
+            payload.price(),
+            payload.quantity(),
+            payload.is_bid(),
+            payload.expire_timestamp(),
+            clock,
+            ctx,
+        );
 
-    let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
-    let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
+        ticket.discharge();
+    }
 
-    let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
-    pool.cancel_order(balance_manager, &proof, payload.order_id(), clock, ctx);
+    public fun execute_cancel_order<QuoteAsset>(
+        pool: &mut MultiCoinPool<QuoteAsset>,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        clock: &Clock,
+        ticket: ExecutionTicket<CancelOrder<QuoteAsset>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-    ticket.discharge();
-}
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        assert!(object::id(pool) == payload.pool_id(), EWrongPool);
 
-// === sweeps (book -> treasury) ===
+        let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
+        let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
 
-public fun execute_sweep_coin_to_treasury<T>(
-    treasury: &mut TreasuryVault,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    ticket: ExecutionTicket<SweepCoinToTreasury<T>>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
+        pool.cancel_order(balance_manager, &proof, payload.order_id(), clock, ctx);
 
-    assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        ticket.discharge();
+    }
 
-    let withdraw_cap_id = cap_vault.ids_for_type<WithdrawCap>()[0];
-    let withdraw_cap = cap_vault.borrow_cap<WithdrawCap, _>(withdraw_cap_id, req);
+    // === sweeps (book -> treasury) ===
 
-    let coin = balance_manager.withdraw_with_cap<T>(withdraw_cap, payload.amount(), ctx);
-    treasury.deposit<T>(coin, ctx);
+    public fun execute_sweep_coin_to_treasury<T>(
+        treasury: &mut TreasuryVault,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        ticket: ExecutionTicket<SweepCoinToTreasury<T>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-    ticket.discharge();
-}
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
 
-public fun execute_sweep_multicoin_to_treasury(
-    treasury: &mut TreasuryVault,
-    balance_manager: &mut BalanceManager,
-    cap_vault: &CapabilityVault,
-    ticket: ExecutionTicket<SweepMulticoinToTreasury>,
-    ctx: &mut TxContext,
-) {
-    let payload = ticket.ticket_payload();
-    let req = ticket.ticket_request();
+        let withdraw_cap_id = cap_vault.ids_for_type<WithdrawCap>()[0];
+        let withdraw_cap = cap_vault.borrow_cap<WithdrawCap, _>(withdraw_cap_id, req);
 
-    assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        let coin = balance_manager.withdraw_with_cap<T>(withdraw_cap, payload.amount(), ctx);
+        treasury.deposit<T>(coin, ctx);
 
-    let withdraw_cap_id = cap_vault.ids_for_type<WithdrawCap>()[0];
-    let withdraw_cap = cap_vault.borrow_cap<WithdrawCap, _>(withdraw_cap_id, req);
+        ticket.discharge();
+    }
 
-    let bal = balance_manager.withdraw_multicoin_with_cap(
-        withdraw_cap,
-        payload.collection_id(),
-        payload.asset_id(),
-        payload.amount(),
-        ctx,
-    );
-    treasury.deposit_multicoin(bal, ctx);
+    public fun execute_sweep_multicoin_to_treasury(
+        treasury: &mut TreasuryVault,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        ticket: ExecutionTicket<SweepMulticoinToTreasury>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
 
-    ticket.discharge();
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+
+        let withdraw_cap_id = cap_vault.ids_for_type<WithdrawCap>()[0];
+        let withdraw_cap = cap_vault.borrow_cap<WithdrawCap, _>(withdraw_cap_id, req);
+
+        let bal = balance_manager.withdraw_multicoin_with_cap(
+            withdraw_cap,
+            payload.collection_id(),
+            payload.asset_id(),
+            payload.amount(),
+            ctx,
+        );
+        treasury.deposit_multicoin(bal, ctx);
+
+        ticket.discharge();
+    }
+
+    // === coin pool trading ===
+
+    public fun execute_place_limit_order_coin<BaseAsset, QuoteAsset>(
+        pool: &mut Pool<BaseAsset, QuoteAsset>,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        clock: &Clock,
+        ticket: ExecutionTicket<PlaceLimitOrderCoin<BaseAsset, QuoteAsset>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
+
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        assert!(object::id(pool) == payload.pool_id(), EWrongPool);
+
+        let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
+        let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
+
+        let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
+        let _order_info = pool.place_limit_order(
+            balance_manager,
+            &proof,
+            payload.order_type(),
+            payload.self_matching_option(),
+            payload.price(),
+            payload.quantity(),
+            payload.is_bid(),
+            payload.expire_timestamp(),
+            clock,
+            ctx,
+        );
+
+        ticket.discharge();
+    }
+
+    public fun execute_cancel_order_coin<BaseAsset, QuoteAsset>(
+        pool: &mut Pool<BaseAsset, QuoteAsset>,
+        balance_manager: &mut BalanceManager,
+        cap_vault: &CapabilityVault,
+        clock: &Clock,
+        ticket: ExecutionTicket<CancelOrderCoin<BaseAsset, QuoteAsset>>,
+        ctx: &mut TxContext,
+    ) {
+        let payload = ticket.ticket_payload();
+        let req = ticket.ticket_request();
+
+        assert!(object::id(balance_manager) == payload.balance_manager_id(), EWrongBalanceManager);
+        assert!(object::id(pool) == payload.pool_id(), EWrongPool);
+
+        let trade_cap_id = cap_vault.ids_for_type<TradeCap>()[0];
+        let trade_cap = cap_vault.borrow_cap<TradeCap, _>(trade_cap_id, req);
+
+        let proof = balance_manager.generate_proof_as_trader(trade_cap, ctx);
+        pool.cancel_order(balance_manager, &proof, payload.order_id(), clock, ctx);
+
+        ticket.discharge();
+    }
 }

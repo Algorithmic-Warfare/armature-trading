@@ -8,29 +8,15 @@ version = "0.0.1"
 # ExecutionTicket<P> proposal pipeline. Standalone, optional package: consumers
 # who do not need DEX integration never pull triexbook.
 #
-# Target environment: testnet_stillness ONLY.
-#   On testnet_stillness, armature_framework, triexbook, and multicoin all
-#   resolve to the SAME multicoin build (rev c7a97f2, matching manifest digests),
-#   so TreasuryVault's MultiCoinBalance and triexbook's are the identical type.
-#   Do NOT add testnet_utopia: triexbook pins a different multicoin there
-#   (281bd7d), which would diverge the MultiCoinBalance type and break the
-#   treasury <-> balance_manager handoff.
+# Target environment: testnet_wip.
 
-# BLOCKER: armature_framework on `main` declares only `testnet_wip`, NOT
-# `testnet_stillness`. Move's automated address management requires every
-# transitive dep to declare the build env, so `sui move build -e testnet_stillness`
-# fails to resolve `armature` until the framework adds a `testnet_stillness`
-# entry to its [environments]. This package's own source compiles cleanly once
-# that override lands (verified locally against a patched framework copy).
 [dependencies]
-armature  = { git = "https://github.com/loash-industries/armature.git",    subdir = "packages/armature_framework", rev = "main" }
-triexbook = { git = "https://github.com/loash-industries/triex-book.git",   subdir = "packages/triexbook",          rev = "7630922672b50a1596d354c93e20208191520c22" }
-# override = true: armature_trading and armature both depend on multicoin at the
-# SAME rev (c7a97f2) -> same on-chain package id. Move requires an explicit
-# override to confirm the versions are intentionally unified (they are).
-multicoin = { git = "https://github.com/Algorithmic-Warfare/multicoin.git", subdir = "packages/multicoin",          rev = "c7a97f2f42ffbddbe2d44686cbc9eebd1810b8d6", override = true }
+armature  = { git = "https://github.com/loash-industries/armature.git",       subdir = "packages/armature_framework", rev = "2d799787a73f200b929f85e20c16598863789aa7" }
+triexbook = { git = "https://github.com/loash-industries/triex-book.git",      subdir = "packages/triexbook",          rev = "afe48366eb3c60c9f924b0bcd51376bdf67c5648" }
+token     = { git = "https://github.com/loash-industries/triex-book.git",      subdir = "packages/token",              rev = "afe48366eb3c60c9f924b0bcd51376bdf67c5648" }
+# override = true: armature and triexbook both pull multicoin; this unifies them on
+# a single entry so there is no multicoin_1 duplicate in the lock.
+multicoin = { git = "https://github.com/Algorithmic-Warfare/multicoin", subdir = "packages/multicoin", rev = "330d339336f2b62ae216fb7398dbbf165bdb3c3f", override = true }
 
-# Published address on testnet_stillness. 0x0 until first publish; replace with
-# the real package id after `sui client publish -e testnet_stillness`.
 [environments]
-testnet_stillness = "0x0"
+testnet_wip = "0x9544cc68cd446f1ed2a4cf5ea858be049c3db827c73efffc8d6347845d5a2fb7"
