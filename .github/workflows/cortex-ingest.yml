@@ -1,0 +1,21 @@
+name: Cortex Ingestion
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - .cortex/**
+      - .github/workflows/cortex-ingest.yml
+      - docs/**
+
+jobs:
+  cortex-ingest:
+    uses: loash-industries/public-workflows/.github/workflows/js-cortex-ingest.yaml@v0.2.2
+    if: github.ref == 'refs/heads/main'
+    with:
+      cortex_api_url: "https://cortex-relay-dev-api.trinary.exchange"
+      npm_private_registry_url: "https://npm.pkg.github.com/"
+      npm_client: yarn
+    secrets:
+      CORTEX_INGEST_TOKEN: ${{ secrets.CORTEX_INGEST_TOKEN }}
+      GH_AUTH_TOKEN: ${{ secrets.GH_AUTH_TOKEN }}
