@@ -57,3 +57,15 @@ Withdraw `amount` of `Coin<T>` from the `BalanceManager` back into the DAO treas
 
 ### `SweepMulticoinToTreasury`
 Withdraw a multicoin asset from the `BalanceManager` back into the DAO treasury. Typical use: collecting items received after a bid fills.
+
+Before sweeping, `withdraw_settled_amounts_permissionless` must push settled fills from the order book into the `BalanceManager`. This function is callable by anyone without governance (typically a bot or the DAO itself) and is not a proposal type.
+
+---
+
+## Trade Lifecycle
+
+A complete trade cycle follows a predictable pattern.
+
+**Selling items (ask):** deposit the multicoin asset via `DepositMulticoinToBook` → place a limit order with `PlaceLimitOrder<QuoteAsset>` (`is_bid = false`) → wait for the order to fill → call `withdraw_settled_amounts_permissionless` to push proceeds into the `BalanceManager` → sweep quote currency back to treasury via `SweepCoinToTreasury`.
+
+**Buying items (bid):** deposit fungible quote currency via `DepositCoinToBook<T>` → place a limit order with `PlaceLimitOrder<QuoteAsset>` (`is_bid = true`) → wait for the order to fill → call `withdraw_settled_amounts_permissionless` to push received items into the `BalanceManager` → sweep items back to treasury via `SweepMulticoinToTreasury`.
