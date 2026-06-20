@@ -51,3 +51,51 @@ source = { git = "https://github.com/loash-industries/triex-book.git", subdir = 
 use_environment = "testnet_stillness"
 manifest_digest = "7E90EF1DD88BBD3644604DB69CB16E6C48E126B69766CC41B0634C90C95DE7A4"
 deps = { multicoin = "multicoin_1", std = "MoveStdlib", sui = "Sui", token = "token" }
+
+[pinned.testnet_wip.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "testnet_wip"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet_wip.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "718ae563a42fb4ba0d055588f81c704dcef58c25" }
+use_environment = "testnet_wip"
+manifest_digest = "28356E8C7042E1BCC8404F5FA3CEA0D71945B2718D66C5B565A19C0E0FF13513"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.testnet_wip.armature]
+source = { git = "https://github.com/loash-industries/armature.git", subdir = "packages/armature_framework", rev = "4bd6fbaea43fab3967b0c1627b1bea679abc78c3" }
+use_environment = "testnet_wip"
+manifest_digest = "306DB424E40403128B606D0D2BFA07B203031A596637F1043B165D5F0BEA1255"
+deps = { multicoin = "multicoin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet_wip.armature_trading]
+source = { root = true }
+use_environment = "testnet_wip"
+manifest_digest = "4C08B820EC770CDE6D65404A5D9663B9C1FE8E172F123017C8AD4CEF45CCE4D6"
+deps = { armature = "armature", multicoin = "multicoin_1", std = "MoveStdlib", sui = "Sui", triexbook = "triexbook" }
+
+[pinned.testnet_wip.multicoin]
+source = { git = "https://github.com/Algorithmic-Warfare/multicoin", subdir = "packages/multicoin", rev = "330d339336f2b62ae216fb7398dbbf165bdb3c3f" }
+use_environment = "testnet_wip"
+manifest_digest = "D348BEDDD6FFFF67DF5CB640D02150D6B88DD7F9BAE074A0CED9BC3CB5BFD521"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet_wip.multicoin_1]
+source = { git = "https://github.com/Algorithmic-Warfare/multicoin", subdir = "packages/multicoin", rev = "c7a97f2f42ffbddbe2d44686cbc9eebd1810b8d6" }
+use_environment = "testnet_wip"
+manifest_digest = "D348BEDDD6FFFF67DF5CB640D02150D6B88DD7F9BAE074A0CED9BC3CB5BFD521"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet_wip.token]
+source = { git = "https://github.com/loash-industries/triex-book.git", subdir = "packages/token", rev = "7630922672b50a1596d354c93e20208191520c22" }
+use_environment = "testnet_wip"
+manifest_digest = "D348BEDDD6FFFF67DF5CB640D02150D6B88DD7F9BAE074A0CED9BC3CB5BFD521"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet_wip.triexbook]
+source = { git = "https://github.com/loash-industries/triex-book.git", subdir = "packages/triexbook", rev = "7630922672b50a1596d354c93e20208191520c22" }
+use_environment = "testnet_wip"
+manifest_digest = "2B6547090BA18091F78CB1C1FD511BB542B99A754E3B89B091B75596F68E806B"
+deps = { multicoin = "multicoin_1", std = "MoveStdlib", sui = "Sui", token = "token" }
