@@ -1,71 +1,59 @@
 # Trading Proposal Types
 
-`armature-trading` adds DEX trading proposal types to any Armature DAO. Each type integrates with [TriexBook](https://trinary.exchange) order books and routes through the DAO's `BalanceManager` and `TreasuryVault`.
+`armature-trading` adds order-book trading proposal types to any Armature OU. Each type trades on [Trinary Exchange](https://trinary.exchange) (`triex`) through a `TradingAccount` held by the OU's `TradingCustody`, and moves funds between that account and the OU's `TreasuryVault` (coins) or an armature_vault `OuReceiptVault` (multicoin items).
 
-All types follow the `ExecutionTicket<P>` hot-potato pattern from `armature_framework`: each handler reads `ticket.ticket_payload()` and ends with `ticket.discharge()`, making them composable inside `CompositeFrame` proposals and usable via `ExternalExecutionCap`.
+All types follow the `ExecutionTicket<P>` hot-potato pattern from `armature_framework`. Each handler reads `ticket.ticket_payload()`, checks every object it is passed against the payload and the ticket's OU, and closes the ticket with `ticket.discharge(permit)`. That makes each type usable inside composite proposals and through an `ExternalExecutionCap`.
+
+Every payload except `SetupTradingAccount` names its `trading_account_id`. The handler aborts unless the passed `TradingAccount` has that ID and the passed `TradingCustody` holds it for the ticket's OU.
 
 ---
 
 ## Account Setup
 
 ### `SetupTradingAccount`
-Create a `BalanceManager` owned by the DAO and store the resulting `DepositCap`, `WithdrawCap`, and `TradeCap` in the DAO's `CapabilityVault`. Empty payload — the DAO is identified by the `ExecutionRequest`. This must be executed before any other trading proposals can run.
+Create a shared `TradingCustody` for the ticket's OU and a shared `TradingAccount` owned by the custody's address. triex sends the account's `DepositCap`, `WithdrawCap` and `TradeCap` to the custody. Empty payload: the OU comes from the ticket. Permission bits: none.
+
+After it executes, anyone calls `trading_custody::claim_caps` in a later transaction to store the caps. The other types abort with `ECapsNotClaimed` until then. An OU may run this more than once to hold several accounts.
 
 ---
 
 ## Deposits
 
 ### `DepositCoinToBook<T>`
-Move `amount` of `Coin<T>` from the DAO treasury into the `BalanceManager` (the DEX-side balance), making it available to back bids or fill orders.
+Move `amount` of `Coin<T>` from the OU treasury into the `TradingAccount`, to back bids. Permission bits: `TREASURY_WITHDRAW`.
 
-### `DepositMulticoinToBook`
-Move a multicoin asset (identified by `collection_id` / `asset_id`) from the DAO treasury into the `BalanceManager`, making it available to back asks.
+### `DepositFromOuVaultToBook`
+Move `amount` of multicoin asset `asset_id` from the `OuReceiptVault` named by `vault_id` into the `TradingAccount`, to back asks. The `&OU` passed must be the ticket's OU, and the executor must satisfy the vault's `Withdraw` role. Permission bits: none.
 
 ---
 
-## Order Placement
+## Orders
 
 ### `PlaceLimitOrder<QuoteAsset>`
-Place a limit order on a TriexBook `MultiCoinPool<QuoteAsset>`. Used for pools where the base is a non-fungible or multicoin collection asset and the quote is a `Coin<QuoteAsset>`. `is_bid = true` buys items; `is_bid = false` sells items.
+Place a limit order on the triex `MultiCoinPool<QuoteAsset>` named by `pool_id`. The base is a multicoin asset and the quote is `Coin<QuoteAsset>`; `quantity` is in base units. `is_bid = true` buys items; `is_bid = false` sells them. Fees are quote-denominated and follow the shared `FeePolicy`. Permission bits: none.
 
-### `PlaceLimitOrderCoin<BaseAsset, QuoteAsset>`
-Place a limit order on a TriexBook `Pool<BaseAsset, QuoteAsset>` where both sides are standard `Coin<T>` types. `is_bid = true` buys `BaseAsset`; `is_bid = false` sells `BaseAsset`.
-
----
-
-## Order Cancellation
+### `PlaceMarketOrder<QuoteAsset>`
+Place an immediate-or-cancel market order on the named `MultiCoinPool<QuoteAsset>`. Same fields as `PlaceLimitOrder` without price, order type or expiry. Permission bits: none.
 
 ### `CancelOrder<QuoteAsset>`
-Cancel a resting order on a TriexBook `MultiCoinPool<QuoteAsset>`. Unlocked funds settle back into the `BalanceManager`.
-
-### `CancelOrderCoin<BaseAsset, QuoteAsset>`
-Cancel a resting order on a TriexBook `Pool<BaseAsset, QuoteAsset>`. Unlocked funds settle back into the `BalanceManager`.
+Cancel resting order `order_id` (`u128`) on the named `MultiCoinPool<QuoteAsset>`. Unlocked funds settle back into the `TradingAccount`. Permission bits: none.
 
 ---
 
-## Pool Management
-
-### `CreateMulticoinPool<QuoteAsset>`
-Create a permissionless `MultiCoinPool<QuoteAsset>` for a given collection/asset pair, paying the creation fee from the DAO treasury.
-
----
-
-## Sweeps (DEX → Treasury)
+## Sweeps (book → OU)
 
 ### `SweepCoinToTreasury<T>`
-Withdraw `amount` of `Coin<T>` from the `BalanceManager` back into the DAO treasury. Typical use: sweeping quote proceeds (e.g. SUI) after a sell order fills.
+Withdraw `amount` of `Coin<T>` from the `TradingAccount` into the OU treasury, for example quote proceeds after an ask fills. The treasury must belong to the ticket's OU. Permission bits: none.
 
-### `SweepMulticoinToTreasury`
-Withdraw a multicoin asset from the `BalanceManager` back into the DAO treasury. Typical use: collecting items received after a bid fills.
+### `SweepMulticoinToOuVault`
+Withdraw `amount` of multicoin asset (`collection_id`, `asset_id`) from the `TradingAccount` into the `OuReceiptVault` named by `vault_id`, for example items received after a bid fills. The `&OU` passed must be the ticket's OU, and the executor must satisfy the vault's `Deposit` role. Permission bits: none.
 
-Before sweeping, `withdraw_settled_amounts_permissionless` must push settled fills from the order book into the `BalanceManager`. This function is callable by anyone without governance (typically a bot or the DAO itself) and is not a proposal type.
+Before a sweep, `multicoin_pool::withdraw_settled_amounts_permissionless` must move settled fills from the pool into the `TradingAccount`. Anyone can call it without governance (typically a bot or an OU member). It is not a proposal type.
 
 ---
 
 ## Trade Lifecycle
 
-A complete trade cycle follows a predictable pattern.
+**Selling items (ask):** `DepositFromOuVaultToBook` → `PlaceLimitOrder<QuoteAsset>` (`is_bid = false`) → *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepCoinToTreasury<QuoteAsset>`.
 
-**Selling items (ask):** deposit the multicoin asset via `DepositMulticoinToBook` → place a limit order with `PlaceLimitOrder<QuoteAsset>` (`is_bid = false`) → wait for the order to fill → call `withdraw_settled_amounts_permissionless` to push proceeds into the `BalanceManager` → sweep quote currency back to treasury via `SweepCoinToTreasury`.
-
-**Buying items (bid):** deposit fungible quote currency via `DepositCoinToBook<T>` → place a limit order with `PlaceLimitOrder<QuoteAsset>` (`is_bid = true`) → wait for the order to fill → call `withdraw_settled_amounts_permissionless` to push received items into the `BalanceManager` → sweep items back to treasury via `SweepMulticoinToTreasury`.
+**Buying items (bid):** `DepositCoinToBook<QuoteAsset>` → `PlaceLimitOrder<QuoteAsset>` (`is_bid = true`) → *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepMulticoinToOuVault`.

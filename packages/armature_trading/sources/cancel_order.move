@@ -1,23 +1,27 @@
-/// Payload: cancel a resting order on a TriexBook MultiCoinPool<QuoteAsset>.
-/// Unlocked funds settle back into the BalanceManager.
-module armature_trading::cancel_order;
+/// Payload: cancel a resting order on a triex MultiCoinPool<QuoteAsset>.
+/// Unlocked funds settle back into the OU's TradingAccount.
+module armature_trading::cancel_order {
+    use std::internal::{Self, Permit};
 
-use sui::object::ID;
+    public struct CancelOrder<phantom QuoteAsset> has drop, store {
+        trading_account_id: ID,
+        pool_id: ID,
+        order_id: u128,
+    }
 
-public struct CancelOrder<phantom QuoteAsset> has drop, store {
-    balance_manager_id: ID,
-    pool_id: ID,
-    order_id: u64,
+    public fun new<QuoteAsset>(
+        trading_account_id: ID,
+        pool_id: ID,
+        order_id: u128,
+    ): CancelOrder<QuoteAsset> {
+        CancelOrder { trading_account_id, pool_id, order_id }
+    }
+
+    public fun trading_account_id<Q>(self: &CancelOrder<Q>): ID { self.trading_account_id }
+
+    public fun pool_id<Q>(self: &CancelOrder<Q>): ID { self.pool_id }
+
+    public fun order_id<Q>(self: &CancelOrder<Q>): u128 { self.order_id }
+
+    public(package) fun permit<Q>(): Permit<CancelOrder<Q>> { internal::permit() }
 }
-
-public fun new<QuoteAsset>(
-    balance_manager_id: ID,
-    pool_id: ID,
-    order_id: u64,
-): CancelOrder<QuoteAsset> {
-    CancelOrder { balance_manager_id, pool_id, order_id }
-}
-
-public fun balance_manager_id<Q>(self: &CancelOrder<Q>): ID { self.balance_manager_id }
-public fun pool_id<Q>(self: &CancelOrder<Q>): ID { self.pool_id }
-public fun order_id<Q>(self: &CancelOrder<Q>): u64 { self.order_id }

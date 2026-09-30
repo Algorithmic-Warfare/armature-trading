@@ -3,17 +3,23 @@ name = "armature_trading"
 edition = "2024"
 version = "0.0.1"
 
-# armature_trading wires the DAO TreasuryVault to the TriexBook DEX so that
-# deposit / order / sweep operations execute through the unified
+# armature_trading wires an armature OU to the Trinary Exchange (triex) order
+# book so that deposit / order / sweep operations execute through the unified
 # ExecutionTicket<P> proposal pipeline. Standalone, optional package: consumers
-# who do not need DEX integration never pull triexbook.
+# who do not need DEX integration never pull triex.
+#
+# Target environment: testnet_stillness (cycle 7). Every dep resolves multicoin
+# to 2772c26 (0xdbb778cb...), so the OuReceiptVault's `multicoin::Balance` and
+# the TradingAccount's are the identical type across the vault <-> book handoff.
 [dependencies]
-armature  = { git = "https://github.com/loash-industries/armature.git",    subdir = "packages/armature_framework", rev = "4bd6fbaea43fab3967b0c1627b1bea679abc78c3" }
-triexbook = { git = "https://github.com/loash-industries/triex-book.git",   subdir = "packages/triexbook",          rev = "7630922672b50a1596d354c93e20208191520c22" }
-# override = true: armature_trading and armature both depend on multicoin;
-# we override to unify on c7a97f2 (same rev as triexbook) so
-# TreasuryVault's MultiCoinBalance and triexbook's are the identical type.
-multicoin = { git = "https://github.com/Algorithmic-Warfare/multicoin",     subdir = "packages/multicoin",          rev = "c7a97f2f42ffbddbe2d44686cbc9eebd1810b8d6", override = true }
+# override = true: armature_vault pins the same armature rev; the override
+# unifies the two so `OU` and `ExecutionTicket` are one type.
+armature       = { git = "https://github.com/loash-industries/armature.git",          subdir = "packages/armature_framework", rev = "ae60685f888ac5dd4d24413fb989002ef5315c74", override = true }
+armature_vault = { git = "https://github.com/Algorithmic-Warfare/armature-vault.git", subdir = "packages/armature_vault",     rev = "3e80649b41c85704845f43e316525aff4a3a745e" }
+triex          = { git = "https://github.com/loash-industries/trinary-exchange.git",  subdir = "packages/triex",              rev = "634f41e0b6ec3e59dda4be15d17b615c0c5d48d6" }
+# override = true: triex and armature_vault both depend on multicoin at 2772c26;
+# the override unifies them so there is exactly one `multicoin::Balance`.
+multicoin      = { git = "https://github.com/Algorithmic-Warfare/multicoin",           subdir = "packages/multicoin",          rev = "2772c26d24c02671726d39f167b8f772777875d9", override = true }
 
 [environments]
-testnet_wip = "4c78adac"
+testnet_stillness = "4c78adac"
