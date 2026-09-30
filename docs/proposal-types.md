@@ -4,7 +4,7 @@
 
 All types follow the `ExecutionTicket<P>` hot-potato pattern from `armature_framework`. Each handler reads `ticket.ticket_payload()`, checks every object it is passed against the payload and the ticket's OU, and closes the ticket with `ticket.discharge(permit)`. That makes each type usable inside composite proposals and through an `ExternalExecutionCap`.
 
-Every payload except `SetupTradingAccount` names its `trading_account_id`. The handler aborts unless the passed `TradingAccount` has that ID and the passed `TradingCustody` holds it for the ticket's OU.
+Every payload except `SetupTradingAccount` and `CreateMulticoinPool` names its `trading_account_id`. The handler aborts unless the passed `TradingAccount` has that ID and the passed `TradingCustody` holds it for the ticket's OU.
 
 ---
 
@@ -27,6 +27,13 @@ Move `amount` of multicoin asset `asset_id` from the `OuReceiptVault` named by `
 
 ---
 
+## Pool Creation
+
+### `CreateMulticoinPool<QuoteAsset>`
+Create a permissionless triex `MultiCoinPool<QuoteAsset>` for multicoin asset `asset_id` in the `Collection` named by `collection_id`, paying the 500 CRED creation fee (`constants::pool_creation_fee()`) from the OU treasury. `QuoteAsset` must be registry-approved and bootstrapped in the `FeePolicy`. triex shares the pool and emits `MultiCoinPoolCreated` with its ID. Permission bits: `TREASURY_WITHDRAW`.
+
+---
+
 ## Orders
 
 ### `PlaceLimitOrder<QuoteAsset>`
@@ -37,6 +44,12 @@ Place an immediate-or-cancel market order on the named `MultiCoinPool<QuoteAsset
 
 ### `CancelOrder<QuoteAsset>`
 Cancel resting order `order_id` (`u128`) on the named `MultiCoinPool<QuoteAsset>`. Unlocked funds settle back into the `TradingAccount`. Permission bits: none.
+
+### `PlaceLimitOrderCoin<BaseAsset, QuoteAsset>`
+Place a limit order on the triex coin `Pool<BaseAsset, QuoteAsset>` named by `pool_id`. Both sides are `Coin<T>` types; `quantity` is in base units. `is_bid = true` buys base; `is_bid = false` sells it. Same fields as `PlaceLimitOrder`. Permission bits: none.
+
+### `CancelOrderCoin<BaseAsset, QuoteAsset>`
+Cancel resting order `order_id` (`u128`) on the named coin `Pool<BaseAsset, QuoteAsset>`. Unlocked funds settle back into the `TradingAccount`. Unlike the multicoin cancel, the handler takes no `FeePolicy`. Permission bits: none.
 
 ---
 
@@ -57,3 +70,5 @@ Before a sweep, `multicoin_pool::withdraw_settled_amounts_permissionless` must m
 **Selling items (ask):** `DepositFromOuVaultToBook` → `PlaceLimitOrder<QuoteAsset>` (`is_bid = false`) → *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepCoinToTreasury<QuoteAsset>`.
 
 **Buying items (bid):** `DepositCoinToBook<QuoteAsset>` → `PlaceLimitOrder<QuoteAsset>` (`is_bid = true`) → *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepMulticoinToOuVault`.
+
+**Trading a coin pair:** `DepositCoinToBook<QuoteAsset>` (bid) or `DepositCoinToBook<BaseAsset>` (ask) → `PlaceLimitOrderCoin<BaseAsset, QuoteAsset>` → *(fill)* → `pool::withdraw_settled_amounts_permissionless` → `SweepCoinToTreasury<BaseAsset>` or `SweepCoinToTreasury<QuoteAsset>`.

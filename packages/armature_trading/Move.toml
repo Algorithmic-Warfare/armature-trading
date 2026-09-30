@@ -17,6 +17,9 @@ version = "0.0.1"
 armature       = { git = "https://github.com/loash-industries/armature.git",          subdir = "packages/armature_framework", rev = "ae60685f888ac5dd4d24413fb989002ef5315c74", override = true }
 armature_vault = { git = "https://github.com/Algorithmic-Warfare/armature-vault.git", subdir = "packages/armature_vault",     rev = "3e80649b41c85704845f43e316525aff4a3a745e" }
 triex          = { git = "https://github.com/loash-industries/trinary-exchange.git",  subdir = "packages/triex",              rev = "bdcdaed6e3ad738a3c6316190d5c45031f8f6ffb" }
+# token (CRED) is triex's sibling package at the same rev; declared directly so
+# CreateMulticoinPool can name `token::cred::CRED` for the pool-creation fee.
+token          = { git = "https://github.com/loash-industries/trinary-exchange.git",  subdir = "packages/token",              rev = "bdcdaed6e3ad738a3c6316190d5c45031f8f6ffb" }
 # override = true: triex and armature_vault both depend on multicoin at 2772c26;
 # the override unifies them so there is exactly one `multicoin::Balance`.
 multicoin      = { git = "https://github.com/Algorithmic-Warfare/multicoin",           subdir = "packages/multicoin",          rev = "2772c26d24c02671726d39f167b8f772777875d9", override = true }

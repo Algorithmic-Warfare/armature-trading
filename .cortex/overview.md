@@ -41,6 +41,9 @@ See [docs/proposal-types.md](../docs/proposal-types.md) for the full list with d
 | `PlaceLimitOrder<QuoteAsset>` | Places a limit order on a `MultiCoinPool` |
 | `PlaceMarketOrder<QuoteAsset>` | Places a market order on a `MultiCoinPool` |
 | `CancelOrder<QuoteAsset>` | Cancels a resting order on a `MultiCoinPool` |
+| `CreateMulticoinPool<QuoteAsset>` | Creates a permissionless `MultiCoinPool`, paying the CRED fee from treasury |
+| `PlaceLimitOrderCoin<BaseAsset, QuoteAsset>` | Places a limit order on a coin `Pool<BaseAsset, QuoteAsset>` |
+| `CancelOrderCoin<BaseAsset, QuoteAsset>` | Cancels a resting order on a coin `Pool<BaseAsset, QuoteAsset>` |
 | `SweepCoinToTreasury<T>` | Moves `Coin<T>` from `TradingAccount` → treasury |
 | `SweepMulticoinToOuVault` | Moves a multicoin asset from `TradingAccount` → `OuReceiptVault` |
 
@@ -57,4 +60,4 @@ See [docs/proposal-types.md](../docs/proposal-types.md) for the full list with d
 - `trading_ops`: the `execute_*` handlers for all proposal types
 - `trading_custody`: `TradingCustody` and cap access limited to this package
 - `trading_permissions`: permission bits for each type's enabling config
-- One payload module per proposal type (8 modules)
+- One payload module per proposal type (11 modules)

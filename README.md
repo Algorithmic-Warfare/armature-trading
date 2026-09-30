@@ -42,14 +42,15 @@ custody and account, and payloads name the account by ID.
 
 ## Modules
 
-- `trading_ops`: the eight `execute_*` handlers.
+- `trading_ops`: the eleven `execute_*` handlers.
 - `trading_custody`: the `TradingCustody` object and cap access
   limited to this package.
 - `trading_permissions`: the permission bits each type needs in its enabling
   config.
 - One payload module per type: `setup_trading_account`, `deposit_coin_to_book`,
-  `deposit_from_ou_vault_to_book`, `place_limit_order`, `place_market_order`,
-  `cancel_order`, `sweep_coin_to_treasury`, `sweep_multicoin_to_ou_vault`.
+  `deposit_from_ou_vault_to_book`, `create_multicoin_pool`, `place_limit_order`,
+  `place_market_order`, `cancel_order`, `place_limit_order_coin`,
+  `cancel_order_coin`, `sweep_coin_to_treasury`, `sweep_multicoin_to_ou_vault`.
 
 See [docs/proposal-types.md](docs/proposal-types.md) for each type.
 
@@ -72,7 +73,8 @@ the TradingAccount before a sweep.
 
 Enable each type on the OU with `EnableProposalType` (or a `ProposalTypeInit`
 override at OU creation). Take the permission bits from `trading_permissions`:
-`DepositCoinToBook<T>` needs `TREASURY_WITHDRAW`, and the others need none. No
+`DepositCoinToBook<T>` and `CreateMulticoinPool<Q>` need `TREASURY_WITHDRAW`,
+and the others need none. No
 type borrows from the `CapabilityVault`, so every borrow scope stays empty.
 
 The two `OuReceiptVault` handlers also need the executor to satisfy the vault's
@@ -89,9 +91,11 @@ sui move build -e testnet_stillness
 sui move test -e testnet_stillness --package-size 16
 ```
 
-The tests cover setup and the deposit and sweep handlers. The order handlers
-(`PlaceLimitOrder`, `PlaceMarketOrder`, `CancelOrder`) are only type-checked:
-testing them needs a registered `MultiCoinPool` and `FeePolicy`.
+The tests cover setup, the deposit and sweep handlers, `CreateMulticoinPool`
+and the coin-pool order handlers (`PlaceLimitOrderCoin`, `CancelOrderCoin`),
+the last two also through `board_voting::submit_vote_execute`. The multicoin
+order handlers (`PlaceLimitOrder`, `PlaceMarketOrder`, `CancelOrder`) are only
+type-checked.
 
 ## Publishing for cycle 7
 
@@ -106,5 +110,5 @@ cycle.
 
 - **Custody migration.** A custody is tied to one OU for good. Moving an
   account to a migrated OU would need a new governance type.
-- **Coin-pair pools.** Only `MultiCoinPool` is wired. Coin-pair `Pool` order
-  types are not implemented.
+- **Coin-pair pools.** `Pool<Base, Quote>` supports limit orders and cancels
+  only. There is no coin-pool market order and no coin-pool creation type.
