@@ -12,8 +12,12 @@ module armature_trading::trading_permissions {
     /// DepositCoinToBook<T>: withdraws from the treasury.
     public fun deposit_coin_to_book(): u64 { permissions::treasury_withdraw() }
 
+    /// CreateMulticoinPool<Q>: withdraws the CRED creation fee from the treasury.
+    public fun create_multicoin_pool(): u64 { permissions::treasury_withdraw() }
+
     /// SetupTradingAccount, DepositFromOuVaultToBook, PlaceLimitOrder<Q>,
-    /// PlaceMarketOrder<Q>, CancelOrder<Q>, SweepCoinToTreasury<T>,
-    /// SweepMulticoinToOuVault: call no framework mutator, so no bits.
+    /// PlaceMarketOrder<Q>, CancelOrder<Q>, PlaceLimitOrderCoin<B, Q>,
+    /// CancelOrderCoin<B, Q>, SweepCoinToTreasury<T>, SweepMulticoinToOuVault:
+    /// call no framework mutator, so no bits.
     public fun no_bits(): u64 { 0 }
 }
