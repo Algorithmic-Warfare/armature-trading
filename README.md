@@ -1,94 +1,110 @@
 # armature-trading
 
-`armature_trading` — a standalone, optional Move package wiring the Armature DAO
-`TreasuryVault` to the [TriexBook](https://github.com/loash-industries/triex-book)
-DEX. Every trading operation (setup, deposit, place/cancel order, sweep) executes
-through the unified `ExecutionTicket<P>` proposal pipeline in `armature_framework`,
-so each one works standalone, inside a composite proposal, or via an
-`ExternalExecutionCap` — with no changes to the framework.
+`armature_trading` is a standalone, optional Move package that lets an Armature
+OU trade on the [Trinary Exchange](https://trinary.exchange) order book
+(`triex`). Every trading operation (setup, deposit, place/cancel order, sweep)
+runs through the `ExecutionTicket<P>` proposal pipeline in `armature_framework`.
+Each one works on its own, inside a composite proposal, or through an
+`ExternalExecutionCap`, with no changes to the framework.
 
-## Target environment: `testnet_stillness` only
-
-On `testnet_stillness`, all three dependencies resolve to the **same** multicoin
-build (`Algorithmic-Warfare/multicoin` @ `c7a97f2`, matching manifest digests),
-so `TreasuryVault`'s `MultiCoinBalance` and TriexBook's are the identical type and
-the treasury ⇄ BalanceManager handoff type-checks.
-
-**Do not add `testnet_utopia`** — TriexBook pins a different multicoin commit
-there (`281bd7d`), which would make the two `MultiCoinBalance` types incompatible.
-
-## Dependencies (pinned)
+## Target environment: `testnet_stillness` (cycle 7)
 
 | Dep | Source | Rev |
 |-----|--------|-----|
-| `armature` (framework) | loash-industries/armature `packages/armature_framework` | `main` |
-| `triexbook` | loash-industries/triex-book `packages/triexbook` | `7630922` |
-| `multicoin` | Algorithmic-Warfare/multicoin `packages/multicoin` | `c7a97f2` |
+| `armature` (framework) | loash-industries/armature `packages/armature_framework` | `ae60685` |
+| `armature_vault` | Algorithmic-Warfare/armature-vault `packages/armature_vault` | `3e80649` |
+| `triex` | loash-industries/trinary-exchange `packages/triex` (`main`, published `0xdbf259ed…`) | `bdcdaed` |
+| `multicoin` | Algorithmic-Warfare/multicoin `packages/multicoin` | `2772c26` |
 
-> `armature_framework`'s multicoin + `ExecutionTicket<P>` foundation lives on
-> `main` (commit `5ed3786`), **not** on `feat/composed-proposal-actions`.
+triex and armature_vault both pin multicoin at `2772c26`. The `override = true`
+on multicoin (and on armature, which armature_vault also pins) unifies them, so
+the `OuReceiptVault`'s `multicoin::Balance` and the `TradingAccount`'s are the
+same type.
+
+## How an OU holds a TradingAccount
+
+A triex `TradingAccount` has a fixed `owner` address, and only the owner may
+mint caps. An OU cannot sign as any address, so the account is owned by a
+shared `TradingCustody` object. **`SetupTradingAccount`** (governance) creates
+the custody and calls triex's `new_with_uid_owner_and_caps` (TRIEX-158) with
+the custody's UID. triex returns the Deposit, Withdraw and Trade caps, and they
+are stored in the custody in the same transaction. The account can trade as
+soon as setup commits.
+
+The caps never leave the custody. Only this package can borrow them, and every
+handler checks that the custody belongs to the OU that approved the ticket.
+Because nobody can sign as the custody's address, the owner-only triex functions
+(`withdraw`, `mint_*_cap`, `revoke_trade_cap`, `register_trading_account`) are
+never callable on the account.
+
+An OU can run `SetupTradingAccount` more than once. Each run makes a separate
+custody and account, and payloads name the account by ID.
 
 ## Modules
 
-- `trading_ops` — central dispatcher, the seven `execute_*` handlers.
-- `setup_trading_account`, `deposit_coin_to_book`, `deposit_multicoin_to_book`,
-  `place_limit_order`, `cancel_order`, `sweep_coin_to_treasury`,
-  `sweep_multicoin_to_treasury` — one payload type each.
+- `trading_ops`: the eight `execute_*` handlers.
+- `trading_custody`: the `TradingCustody` object and cap access
+  limited to this package.
+- `trading_permissions`: the permission bits each type needs in its enabling
+  config.
+- One payload module per type: `setup_trading_account`, `deposit_coin_to_book`,
+  `deposit_from_ou_vault_to_book`, `place_limit_order`, `place_market_order`,
+  `cancel_order`, `sweep_coin_to_treasury`, `sweep_multicoin_to_ou_vault`.
+
+See [docs/proposal-types.md](docs/proposal-types.md) for each type.
 
 ## Trade lifecycle
 
-**Selling items (ask):** `DepositMulticoinToBook` → `PlaceLimitOrder(is_bid=false)`
+The framework's `TreasuryVault` holds only coins, so multicoin items move
+between an armature_vault `OuReceiptVault` and the book.
+
+**Selling items (ask):** `DepositFromOuVaultToBook` → `PlaceLimitOrder(is_bid=false)`
 → *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepCoinToTreasury`.
 
 **Buying items (bid):** `DepositCoinToBook` → `PlaceLimitOrder(is_bid=true)`
-→ *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepMulticoinToTreasury`.
+→ *(fill)* → `withdraw_settled_amounts_permissionless` → `SweepMulticoinToOuVault`.
 
-`withdraw_settled_amounts_permissionless` is callable by anyone (no cap, no
-governance) — a bot or the DAO pushes settled fills into the BalanceManager
-before sweeping.
+Anyone can call `multicoin_pool::withdraw_settled_amounts_permissionless` (no
+cap, no governance). A bot or an OU member runs it to move settled fills into
+the TradingAccount before a sweep.
 
-## Build status
+## Enabling the types
 
-The package **source compiles cleanly** on `testnet_stillness` (`sui move build`
-→ `BUILDING armature_trading`, exit 0), verified against the real
-triexbook / multicoin / framework APIs. The treasury ⇄ BalanceManager multicoin
-handoff type-checks — confirming `MultiCoinBalance` is the identical type on
-both sides. Two things had to be true for the build to pass:
+Enable each type on the OU with `EnableProposalType` (or a `ProposalTypeInit`
+override at OU creation). Take the permission bits from `trading_permissions`:
+`DepositCoinToBook<T>` needs `TREASURY_WITHDRAW`, and the others need none. No
+type borrows from the `CapabilityVault`, so every borrow scope stays empty.
 
-- **`multicoin` needs `override = true`** (now in `Move.toml`): both this package
-  and `armature` pull multicoin at the same rev `c7a97f2` → same package id; Move
-  requires the explicit override to unify them. (This also re-confirms type identity.)
-- **`armature_framework` must declare `testnet_stillness`** — see blocker #0 below.
-  The clean build was reproduced against a locally-patched framework copy that adds
-  that env; with the unpatched `main` framework the build stops at dependency
-  resolution, not at any error in this package's code.
+The two `OuReceiptVault` handlers also need the executor to satisfy the vault's
+ACL: its `Withdraw` role for `DepositFromOuVaultToBook` and its `Deposit` role
+for `SweepMulticoinToOuVault`. With an `Ou { ou_id }` principal, that means the
+executor is a board member of the ticket's OU.
 
-## ⚠️ Open items before this is merge-ready
+## Build & test
 
-0. **`armature_framework` env gap (release blocker).** The framework on `main`
-   declares only `testnet_wip`; triexbook and multicoin declare `testnet_stillness`.
-   Move requires every transitive dep to declare the build env, so
-   `sui move build -e testnet_stillness` cannot resolve `armature` until the
-   framework adds `testnet_stillness` to its `[environments]`. Fix is upstream in
-   `loash-industries/armature`.
-1. **Cap ⇄ BalanceManager assertion (blocker).** TriexBook exposes no public
-   getter for a cap's bound `balance_manager_id`, and its `validate_*` fns are
-   private. TriexBook still enforces the binding *internally* on every op, so it
-   is not exploitable — but handlers can only pre-assert
-   `object::id(balance_manager) == payload.balance_manager_id` (done). Decide
-   whether to add a public accessor upstream in TriexBook for a stronger guard.
-2. **DAO owner address.** `setup_trading_account` derives the BalanceManager
-   owner from `req.req_dao_id().to_address()` as a placeholder — confirm the
-   canonical DAO address derivation.
-3. **Single trading account.** `setup_trading_account` aborts if a `DepositCap`
-   already exists, so `ids_for_type<_>()[0]` is unambiguous. Relax if multi-BM
-   support is needed.
-4. **Published address.** `Move.toml` `[environments] testnet_stillness = "0x0"`
-   until first publish.
-5. **Tests.** No tests yet — `tests/` is empty.
+```bash
+cd packages/armature_trading
+sui move build -e testnet_stillness
+# triex exceeds the default 10 MB test arena; needs sui >= 1.81
+sui move test -e testnet_stillness --package-size 16
+```
 
-This is a scaffold generated from the design note
-`loash-industries/notes/dao/08_triexbook_trading_integration.md`, with the
-external APIs verified against the real TriexBook / multicoin sources. It has not
-yet been compiled against a live `sui move build` (requires the network-fetched
-git deps). Build on `testnet_stillness` before relying on it.
+The tests cover setup and the deposit and sweep handlers. The order handlers
+(`PlaceLimitOrder`, `PlaceMarketOrder`, `CancelOrder`) are only type-checked:
+testing them needs a registered `MultiCoinPool` and `FeePolicy`.
+
+## Publishing for cycle 7
+
+This is a breaking change from the published `testnet_stillness` package: the
+dependencies, payload fields and handler signatures all differ. It needs a
+fresh publish, not an upgrade. The package has no publish record (no
+`Published.toml` or `Move.lock`); publishing to `testnet_stillness` creates
+both. Publish after triex, armature and armature_vault are published for the
+cycle.
+
+## Open items
+
+- **Custody migration.** A custody is tied to one OU for good. Moving an
+  account to a migrated OU would need a new governance type.
+- **Coin-pair pools.** Only `MultiCoinPool` is wired. Coin-pair `Pool` order
+  types are not implemented.
