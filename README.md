@@ -13,7 +13,7 @@ Each one works on its own, inside a composite proposal, or through an
 |-----|--------|-----|
 | `armature` (framework) | loash-industries/armature `packages/armature_framework` | `ae60685` |
 | `armature_vault` | Algorithmic-Warfare/armature-vault `packages/armature_vault` | `3e80649` |
-| `triex` | loash-industries/trinary-exchange `packages/triex` (`cycle-7`) | `634f41e` |
+| `triex` | loash-industries/trinary-exchange `packages/triex` (`main`, published `0xdbf259ed…`) | `bdcdaed` |
 | `multicoin` | Algorithmic-Warfare/multicoin `packages/multicoin` | `2772c26` |
 
 triex and armature_vault both pin multicoin at `2772c26`. The `override = true`
@@ -23,19 +23,13 @@ same type.
 
 ## How an OU holds a TradingAccount
 
-A triex `TradingAccount` has a fixed `owner` address. Since cycle 7,
-`new_with_custom_owner_and_caps` sends the Deposit, Withdraw and Trade caps to
-that owner instead of returning them, and only the owner may mint more. An OU
-cannot sign as any address, so the account is owned by a shared
-`TradingCustody` object:
-
-1. **`SetupTradingAccount`** (governance) creates a `TradingCustody` for the
-   ticket's OU and a `TradingAccount` owned by the custody's address. triex
-   sends the three caps to that address. Both objects are shared.
-2. **`trading_custody::claim_caps`** (anyone, in a later transaction) receives
-   the caps and stores them in the custody. It checks each cap against the
-   custody's own account first, so caps from another account that someone sent
-   to the same address cannot be claimed instead.
+A triex `TradingAccount` has a fixed `owner` address, and only the owner may
+mint caps. An OU cannot sign as any address, so the account is owned by a
+shared `TradingCustody` object. **`SetupTradingAccount`** (governance) creates
+the custody and calls triex's `new_with_uid_owner_and_caps` (TRIEX-158) with
+the custody's UID. triex returns the Deposit, Withdraw and Trade caps, and they
+are stored in the custody in the same transaction. The account can trade as
+soon as setup commits.
 
 The caps never leave the custody. Only this package can borrow them, and every
 handler checks that the custody belongs to the OU that approved the ticket.
@@ -49,7 +43,7 @@ custody and account, and payloads name the account by ID.
 ## Modules
 
 - `trading_ops`: the eight `execute_*` handlers.
-- `trading_custody`: the `TradingCustody` object, `claim_caps`, and cap access
+- `trading_custody`: the `TradingCustody` object and cap access
   limited to this package.
 - `trading_permissions`: the permission bits each type needs in its enabling
   config.
@@ -95,8 +89,7 @@ sui move build -e testnet_stillness
 sui move test -e testnet_stillness --package-size 16
 ```
 
-The tests cover setup, cap claiming (including foreign caps sent to the
-custody), and the deposit and sweep handlers. The order handlers
+The tests cover setup and the deposit and sweep handlers. The order handlers
 (`PlaceLimitOrder`, `PlaceMarketOrder`, `CancelOrder`) are only type-checked:
 testing them needs a registered `MultiCoinPool` and `FeePolicy`.
 
@@ -104,9 +97,10 @@ testing them needs a registered `MultiCoinPool` and `FeePolicy`.
 
 This is a breaking change from the published `testnet_stillness` package: the
 dependencies, payload fields and handler signatures all differ. It needs a
-fresh publish, not an upgrade. Remove the stale `[published.testnet_stillness]`
-entry from `Published.toml` before publishing, after triex, armature and
-armature_vault are published for the cycle.
+fresh publish, not an upgrade. The package has no publish record (no
+`Published.toml` or `Move.lock`); publishing to `testnet_stillness` creates
+both. Publish after triex, armature and armature_vault are published for the
+cycle.
 
 ## Open items
 

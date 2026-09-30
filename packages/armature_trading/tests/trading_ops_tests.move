@@ -1,5 +1,5 @@
 /// Tests for the `trading_ops` deposit and sweep handlers, run against a real
-/// OU, a claimed TradingCustody and an OuReceiptVault gated on the OU. The
+/// OU, a TradingCustody and an OuReceiptVault gated on the OU. The
 /// order handlers need a registered pool and FeePolicy and are not covered here.
 #[test_only]
 module armature_trading::trading_ops_tests {
@@ -31,23 +31,16 @@ module armature_trading::trading_ops_tests {
     const EWrongVault: u64 = 2;
     const EWrongOu: u64 = 4;
     const EWrongTreasury: u64 = 5;
-    // armature_trading::trading_custody::ECapsNotClaimed
-    const ECapsNotClaimed: u64 = 2;
 
-    /// An OU (sole member OFFICER) with 100 SUI in its treasury, a TradingCustody
-    /// (claimed if `claimed`), and an OuReceiptVault holding 100 of ASSET whose
+    /// An OU (sole member OFFICER) with 100 SUI in its treasury, a TradingCustody,
+    /// and an OuReceiptVault holding 100 of ASSET whose
     /// roles are all the OU. Leaves the scenario in an OFFICER transaction.
     fun start(
         scenario: &mut ts::Scenario,
-        claimed: bool,
     ): (OU, TreasuryVault, TradingCustody, TradingAccount, OuReceiptVault, ID) {
         let ou_id = utils::make_ou(scenario, OFFICER, vector[OFFICER]);
         let collection_id = utils::make_collection(scenario, OFFICER);
-        let (custody, account) = if (claimed) {
-            utils::setup_claimed(scenario, OFFICER, ou_id)
-        } else {
-            utils::setup(scenario, OFFICER, ou_id)
-        };
+        let (custody, account) = utils::setup(scenario, OFFICER, ou_id);
         ts::return_shared(custody);
         ts::return_shared(account);
 
@@ -105,10 +98,7 @@ module armature_trading::trading_ops_tests {
     #[test]
     fun vault_to_book_and_back_ok() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
         let rv_id = object::id(&rv);
@@ -145,10 +135,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongVault, location = armature_trading::trading_ops)]
     fun deposit_from_wrong_vault_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
 
@@ -176,10 +163,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongOu, location = armature_trading::trading_ops)]
     fun deposit_from_vault_with_other_ou_ticket_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
         let rv_id = object::id(&rv);
 
@@ -201,10 +185,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongTradingAccount, location = armature_trading::trading_ops)]
     fun sweep_wrong_account_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
         let ou_id = ou.id();
         let rv_id = object::id(&rv);
 
@@ -234,10 +215,7 @@ module armature_trading::trading_ops_tests {
     #[test]
     fun treasury_to_book_and_back_ok() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
 
@@ -269,10 +247,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongCustody, location = armature_trading::trading_ops)]
     fun deposit_coin_with_other_ou_ticket_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
 
         trading_ops::execute_deposit_coin_to_book(
@@ -293,10 +268,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongTreasury, location = armature_trading::trading_ops)]
     fun sweep_coin_to_other_ou_treasury_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            true,
-        );
+        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
 
         trading_ops::execute_sweep_coin_to_treasury(
@@ -307,28 +279,6 @@ module armature_trading::trading_ops_tests {
                 object::id_from_address(OTHER_OU),
                 sweep_coin_to_treasury::new<SUI>(account_id, 0),
             ),
-            scenario.ctx(),
-        );
-        finish(ou, treasury, custody, account, rv, scenario);
-    }
-
-    /// Handlers cannot run until the caps are claimed.
-    #[test]
-    #[expected_failure(abort_code = ECapsNotClaimed, location = armature_trading::trading_custody)]
-    fun deposit_before_claim_aborts() {
-        let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(
-            &mut scenario,
-            false,
-        );
-        let ou_id = ou.id();
-        let account_id = object::id(&account);
-
-        trading_ops::execute_deposit_coin_to_book(
-            &mut treasury,
-            &custody,
-            &mut account,
-            utils::ticket(ou_id, deposit_coin_to_book::new<SUI>(account_id, 70)),
             scenario.ctx(),
         );
         finish(ou, treasury, custody, account, rv, scenario);

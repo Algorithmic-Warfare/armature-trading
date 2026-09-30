@@ -14,7 +14,7 @@ armature_framework (ExecutionTicket<P>, OU, TreasuryVault)   armature_vault (OuR
         triex (MultiCoinPool, TradingAccount, FeePolicy)
 ```
 
-The OU's triex `TradingAccount` is owned by a shared `TradingCustody` object. Since cycle 7, triex sends a custom-owner account's caps to the owner's address, so `SetupTradingAccount` creates the custody and account, and a permissionless `trading_custody::claim_caps` receives the caps in a later transaction after checking each against the account. The caps stay in the custody, usable only by this package's handlers; they are not in the `CapabilityVault`, so no type needs `VAULT_BORROW` or a borrow scope.
+The OU's triex `TradingAccount` is owned by a shared `TradingCustody` object. `SetupTradingAccount` creates the custody and calls triex's `new_with_uid_owner_and_caps` (TRIEX-158) with the custody's UID, which returns the account's caps; the custody stores them in the same transaction. The caps stay in the custody, usable only by this package's handlers; they are not in the `CapabilityVault`, so no type needs `VAULT_BORROW` or a borrow scope.
 
 ## Dependencies (testnet_stillness, cycle 7)
 
@@ -22,10 +22,12 @@ The OU's triex `TradingAccount` is owned by a shared `TradingCustody` object. Si
 |-----|--------|-----|
 | `armature` | loash-industries/armature `packages/armature_framework` | `ae60685` |
 | `armature_vault` | Algorithmic-Warfare/armature-vault | `3e80649` |
-| `triex` | loash-industries/trinary-exchange `packages/triex` (`cycle-7`) | `634f41e` |
+| `triex` | loash-industries/trinary-exchange `packages/triex` (`main`, published `0xdbf259ed…`) | `bdcdaed` |
 | `multicoin` | Algorithmic-Warfare/multicoin | `2772c26` |
 
 `multicoin` (and `armature`) carry `override = true` so the `multicoin::Balance` in `OuReceiptVault` and in `TradingAccount` is the same type.
+
+`armature_trading` itself is not yet published for cycle 7: it has no `Published.toml` or `Move.lock`, and will be published fresh to `testnet_stillness`.
 
 ## Proposal Types
 
@@ -53,6 +55,6 @@ See [docs/proposal-types.md](../docs/proposal-types.md) for the full list with d
 ## Modules
 
 - `trading_ops`: the `execute_*` handlers for all proposal types
-- `trading_custody`: `TradingCustody`, `claim_caps`, and cap access limited to this package
+- `trading_custody`: `TradingCustody` and cap access limited to this package
 - `trading_permissions`: permission bits for each type's enabling config
 - One payload module per proposal type (8 modules)

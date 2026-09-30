@@ -11,9 +11,9 @@ Every payload except `SetupTradingAccount` names its `trading_account_id`. The h
 ## Account Setup
 
 ### `SetupTradingAccount`
-Create a shared `TradingCustody` for the ticket's OU and a shared `TradingAccount` owned by the custody's address. triex sends the account's `DepositCap`, `WithdrawCap` and `TradeCap` to the custody. Empty payload: the OU comes from the ticket. Permission bits: none.
+Create a shared `TradingCustody` for the ticket's OU and a shared `TradingAccount` owned by the custody's address. triex's `new_with_uid_owner_and_caps` returns the account's `DepositCap`, `WithdrawCap` and `TradeCap`, and the custody stores them in the same transaction, so the other types can run as soon as setup commits. Empty payload: the OU comes from the ticket. Permission bits: none.
 
-After it executes, anyone calls `trading_custody::claim_caps` in a later transaction to store the caps. The other types abort with `ECapsNotClaimed` until then. An OU may run this more than once to hold several accounts.
+An OU may run this more than once to hold several accounts.
 
 ---
 

@@ -9,8 +9,8 @@
 ///     (`discharge`) with `P`'s package-only `permit()`
 ///
 /// The OU's TradingAccount caps live in a `TradingCustody` (see
-/// `trading_custody`), not in the CapabilityVault: triex sends them to the
-/// account owner's address, and a CapabilityVault cannot receive objects. So no
+/// `trading_custody`), not in the CapabilityVault: the custody owns the account
+/// and keeps its caps where only this package can borrow them. So no
 /// handler borrows from the vault, and no type needs VAULT_BORROW or a borrow
 /// scope. Only `DepositCoinToBook` calls a framework mutator
 /// (`treasury_vault::withdraw`); `trading_permissions` lists the bits.
@@ -47,8 +47,8 @@ module armature_trading::trading_ops {
     // === setup ===
 
     /// Open a TradingAccount for the ticket's OU, owned by a new shared
-    /// `TradingCustody`. The caps land on the custody's address; call
-    /// `trading_custody::claim_caps` in a later transaction to store them.
+    /// `TradingCustody` that holds its caps. The account can trade as soon as
+    /// this transaction commits.
     public fun execute_setup_trading_account(
         ticket: ExecutionTicket<SetupTradingAccount>,
         ctx: &mut TxContext,

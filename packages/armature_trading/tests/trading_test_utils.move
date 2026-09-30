@@ -8,7 +8,7 @@ module armature_trading::trading_test_utils {
     use multicoin::multicoin;
     use std::string;
     use sui::test_scenario::{Self as ts, Scenario};
-    use triex::trading_account::{TradingAccount, DepositCap, WithdrawCap, TradeCap};
+    use triex::trading_account::TradingAccount;
 
     /// Create and share an OU whose board is `members`. Returns its id.
     public fun make_ou(scenario: &mut Scenario, creator: address, members: vector<address>): ID {
@@ -42,7 +42,7 @@ module armature_trading::trading_test_utils {
     }
 
     /// Run SetupTradingAccount for `ou_id`, then start a new transaction as
-    /// `sender` and take the new custody and account (caps not yet claimed).
+    /// `sender` and take the new custody and account.
     public fun setup(
         scenario: &mut Scenario,
         sender: address,
@@ -59,33 +59,6 @@ module armature_trading::trading_test_utils {
             scenario,
             custody.trading_account_id(),
         );
-        (custody, trading_account)
-    }
-
-    /// Claim the caps most recently sent to `custody`.
-    public fun claim(
-        scenario: &mut Scenario,
-        custody: &mut TradingCustody,
-        trading_account: &mut TradingAccount,
-    ) {
-        let custody_id = object::id(custody);
-        custody.claim_caps(
-            trading_account,
-            ts::most_recent_receiving_ticket<DepositCap>(&custody_id),
-            ts::most_recent_receiving_ticket<WithdrawCap>(&custody_id),
-            ts::most_recent_receiving_ticket<TradeCap>(&custody_id),
-            scenario.ctx(),
-        );
-    }
-
-    /// `setup` followed by `claim`.
-    public fun setup_claimed(
-        scenario: &mut Scenario,
-        sender: address,
-        ou_id: ID,
-    ): (TradingCustody, TradingAccount) {
-        let (mut custody, mut trading_account) = setup(scenario, sender, ou_id);
-        claim(scenario, &mut custody, &mut trading_account);
         (custody, trading_account)
     }
 }
