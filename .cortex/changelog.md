@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+- Published `armature_trading` to `testnet_stillness` (cycle 7): package `0xe7060901772310333cfe7ca055ce5bb06a067e4209b5db3fe684ac3e6b2a0fce`, UpgradeCap `0x6aa743ed7c609b129190d0e7282744b7d3bb1e252cc8c610ba3608ea2c8b3e60`, digest `AP7dG6VH52GnqrydYiNUkLPy4EXQCSws9YnW1Px6CQ5m`. Only `Published.toml` changed.
+
 - Port the coin-trading proposals from `feat/coin-trading` onto the cycle-7 custody model, against triex main (`bdcdaed`):
   - `PlaceLimitOrderCoin<B, Q>` and `CancelOrderCoin<B, Q>` trade on triex coin `Pool<Base, Quote>` through the OU's `TradingAccount` (no permission bits).
   - `CreateMulticoinPool<Q>` creates a permissionless `MultiCoinPool<Q>`, paying the 500 CRED fee from the OU treasury (`TREASURY_WITHDRAW`; `trading_permissions::create_multicoin_pool`).
