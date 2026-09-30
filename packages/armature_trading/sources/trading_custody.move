@@ -44,8 +44,12 @@ module armature_trading::trading_custody {
     /// Returns (custody_id, trading_account_id).
     public(package) fun create(ou_id: ID, ctx: &mut TxContext): (ID, ID) {
         let mut id = object::new(ctx);
-        let (trading_account, deposit_cap, withdraw_cap, trade_cap) =
-            trading_account::new_with_uid_owner_and_caps(&mut id, ctx);
+        let (
+            trading_account,
+            deposit_cap,
+            withdraw_cap,
+            trade_cap,
+        ) = trading_account::new_with_uid_owner_and_caps(&mut id, ctx);
         let trading_account_id = object::id(&trading_account);
         let custody = TradingCustody {
             id,

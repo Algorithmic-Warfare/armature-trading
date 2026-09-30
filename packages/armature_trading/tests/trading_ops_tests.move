@@ -98,7 +98,7 @@ module armature_trading::trading_ops_tests {
     #[test]
     fun vault_to_book_and_back_ok() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
+        let (ou, treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
         let rv_id = object::id(&rv);
@@ -135,7 +135,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongVault, location = armature_trading::trading_ops)]
     fun deposit_from_wrong_vault_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
+        let (ou, treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
 
@@ -163,7 +163,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongOu, location = armature_trading::trading_ops)]
     fun deposit_from_vault_with_other_ou_ticket_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
+        let (ou, treasury, custody, mut account, mut rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
         let rv_id = object::id(&rv);
 
@@ -185,7 +185,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongTradingAccount, location = armature_trading::trading_ops)]
     fun sweep_wrong_account_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
+        let (ou, treasury, custody, mut account, mut rv, collection_id) = start(&mut scenario);
         let ou_id = ou.id();
         let rv_id = object::id(&rv);
 
@@ -215,7 +215,7 @@ module armature_trading::trading_ops_tests {
     #[test]
     fun treasury_to_book_and_back_ok() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
+        let (ou, mut treasury, custody, mut account, rv, _) = start(&mut scenario);
         let ou_id = ou.id();
         let account_id = object::id(&account);
 
@@ -247,7 +247,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongCustody, location = armature_trading::trading_ops)]
     fun deposit_coin_with_other_ou_ticket_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
+        let (ou, mut treasury, custody, mut account, rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
 
         trading_ops::execute_deposit_coin_to_book(
@@ -268,7 +268,7 @@ module armature_trading::trading_ops_tests {
     #[expected_failure(abort_code = EWrongTreasury, location = armature_trading::trading_ops)]
     fun sweep_coin_to_other_ou_treasury_aborts() {
         let mut scenario = ts::begin(OFFICER);
-        let (ou, mut treasury, custody, mut account, mut rv, _) = start(&mut scenario);
+        let (ou, mut treasury, custody, mut account, rv, _) = start(&mut scenario);
         let account_id = object::id(&account);
 
         trading_ops::execute_sweep_coin_to_treasury(

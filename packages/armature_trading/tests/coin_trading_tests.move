@@ -148,7 +148,9 @@ module armature_trading::coin_trading_tests {
     fun enable<P>(scenario: &mut Scenario, ou_id: ID, key: vector<u8>, bits: u64) {
         ts::next_tx(scenario, OFFICER);
         let mut ou = ts::take_shared_by_id<OU>(scenario, ou_id);
-        let config = proposal::new_config(10_000, 10_000, 0, 3_600_000, 0, 0).with_permissions(bits);
+        let config = proposal::new_config(10_000, 10_000, 0, 3_600_000, 0, 0).with_permissions(
+            bits,
+        );
         ou.test_enable_type<P>(key.to_ascii_string(), config);
         ts::return_shared(ou);
     }
